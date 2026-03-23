@@ -41,6 +41,25 @@ export default defineConfig([
     // Bundle converter and editor into subprocess-worker so it's self-contained
     noExternal: ['./converter-node.js', './editor/index.js'],
   },
+  // Bun entry point
+  {
+    entry: {
+      bun: 'src/bun.ts',
+    },
+    format: ['esm'],
+    dts: true,
+    sourcemap: true,
+    clean: false,
+    target: 'node18',
+    platform: 'node',
+    splitting: false,
+    treeshake: true,
+    minify: false,
+    outDir: 'dist',
+    external: ['path', 'url', 'fs', 'fs/promises', 'http', 'worker_threads', 'crypto', 'module', 'child_process'],
+    // Bundle the converter and editor into the bun entry for compiled binary support
+    noExternal: ['./converter-node.js', './editor/index.js', './bun.subprocess-converter.js'],
+  },
   // Browser build
   {
     entry: {

@@ -24,6 +24,11 @@
       "require": "./dist/server.cjs",
       "default": "./dist/server.js"
     },
+    "./bun": {
+      "types": "./dist/bun.d.ts",
+      "import": "./dist/bun.js",
+      "default": "./dist/bun.js"
+    },
     "./types": {
       "types": "./dist/types-entry.d.ts",
       "import": "./dist/types-entry.js",
@@ -42,6 +47,9 @@
       ],
       "server": [
         "./dist/server.d.ts"
+      ],
+      "bun": [
+        "./dist/bun.d.ts"
       ],
       "types": [
         "./dist/types-entry.d.ts"

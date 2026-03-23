@@ -11,6 +11,14 @@
 export { LibreOfficeConverter } from './converter-node.js';
 export { WorkerConverter, createWorkerConverter } from './node.worker-converter.js';
 export { SubprocessConverter, createSubprocessConverter } from './subprocess.worker-converter.js';
+export {
+  DEFAULT_BUN_SUBPROCESS_FLAG,
+  getBunSelfSpawnCommand,
+  isBunRuntime,
+  isBunSubprocessEntrypoint,
+  isNodeRuntime,
+  shouldUseSubprocessConversion,
+} from './runtime.js';
 
 // Font loading utilities (Node.js)
 export { loadFontsFromZip, loadFontsFromDirectory, loadSystemFonts, loadFontsFromPackage, loadFontsFromPackages } from './font-loader.js';
@@ -84,16 +92,12 @@ export {
 import { LibreOfficeConverter } from './converter-node.js';
 import { createSubprocessConverter } from './subprocess.worker-converter.js';
 import type { ConversionOptions, ConversionResult, ImageOptions, LibreOfficeWasmOptions } from './types.js';
+import { shouldUseSubprocessConversion } from './runtime.js';
 
 /**
  * Image format options for exportAsImage
  */
 export type ImageFormat = 'png' | 'jpg' | 'svg';
-
-// Detect if running in Node.js
-const isNode = typeof process !== 'undefined' &&
-  process.versions != null &&
-  process.versions.node != null;
 
 /**
  * Create a configured LibreOffice converter instance
@@ -145,7 +149,7 @@ export async function convertDocument(
   // SubprocessConverter only supports basic conversions, not image/page options
   const isBasicConversion = !options.image;
 
-  if (isNode && isBasicConversion) {
+  if (shouldUseSubprocessConversion(typeof process !== 'undefined' ? process : undefined) && isBasicConversion) {
     const converter = await createSubprocessConverter(converterOptions);
     try {
       return await converter.convert(input, options);

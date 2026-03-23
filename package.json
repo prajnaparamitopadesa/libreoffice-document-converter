@@ -33,6 +33,13 @@
       "require": "./wasm/loader.cjs",
       "default": "./wasm/loader.cjs"
     },
+    "./wasm/soffice.wasm": "./wasm/soffice.wasm",
+    "./wasm/soffice.data": "./wasm/soffice.data",
+    "./wasm/soffice.data.js.metadata": "./wasm/soffice.data.js.metadata",
+    "./wasm/soffice.cjs": "./wasm/soffice.cjs",
+    "./wasm/soffice.js": "./wasm/soffice.js",
+    "./wasm/soffice.worker.cjs": "./wasm/soffice.worker.cjs",
+    "./wasm/soffice.worker.js": "./wasm/soffice.worker.js",
     "./package.json": "./package.json"
   },
   "typesVersions": {
@@ -103,7 +110,8 @@
   "homepage": "https://github.com/matbeedotcom/libreoffice-document-converter#readme",
   "sideEffects": false,
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=18.0.0",
+    "bun": ">=1.1.0"
   },
   "peerDependencies": {
     "jszip": ">=3.0.0",

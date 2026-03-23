@@ -7,6 +7,7 @@ Convert documents between formats (DOCX, PDF, XLSX, PPTX, etc.) in Node.js or br
 - **Pure WebAssembly** - No native LibreOffice installation required
 - **Wide Format Support** - Convert between 15+ document formats
 - **Cross-Platform** - Works in Node.js and browsers
+- **Bun Ready** - Works in Bun scripts and Bun compiled executables
 - **Fast** - ~35ms per conversion after initialization
 
 ## Installation
@@ -30,6 +31,24 @@ const docx = fs.readFileSync('document.docx');
 const result = await convertDocument(docx, { outputFormat: 'pdf' });
 fs.writeFileSync('document.pdf', result.data);
 ```
+
+### Bun: PPT/PPTX 转图片
+
+```ts
+import wasmLoader from '@matbee/libreoffice-converter/wasm/loader';
+import { exportAsImage } from '@matbee/libreoffice-converter';
+
+const slides = await exportAsImage(pptBuffer, [0, 1, 2], 'png', { width: 1600 }, {
+  wasmPath: './node_modules/@matbee/libreoffice-converter/wasm',
+  wasmLoader,
+});
+```
+
+更完整的 Bun 脚本模式和 `bun build --compile` 打包模式示例见：
+
+- `examples/bun-ppt-to-images.ts`
+- `examples/bun-single-file-ppt-to-images.ts`
+- `docs/BUN.md`
 
 ### Export as Image
 
@@ -173,6 +192,7 @@ await converter.initialize();
 
 - **[API Reference](docs/API.md)** - Complete API documentation, types, configuration options
 - **[Examples](docs/EXAMPLES.md)** - Express server, React component, batch conversion, and more
+- **[Bun Support](docs/BUN.md)** - Bun script mode, compiled executable mode, and implementation details
 
 ## System Requirements
 

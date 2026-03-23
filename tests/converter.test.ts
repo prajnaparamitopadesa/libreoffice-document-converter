@@ -123,6 +123,24 @@ describe('LibreOfficeConverter', () => {
 
       expect(converter).toBeDefined();
     });
+
+    it('passes wasmPath through to the wasm loader config', async () => {
+      const createModule = vi.fn().mockResolvedValue({});
+      const converter = new LibreOfficeConverter({
+        wasmPath: '/tmp/bun-assets',
+        wasmLoader: {
+          createModule,
+        },
+      });
+
+      await (converter as unknown as { loadModule: () => Promise<unknown> }).loadModule();
+
+      expect(createModule).toHaveBeenCalledWith(
+        expect.objectContaining({
+          wasmPath: '/tmp/bun-assets',
+        })
+      );
+    });
   });
 
   // Integration tests (require WASM build)
@@ -179,4 +197,3 @@ describe('Format constants', () => {
     expect(FORMAT_FILTERS.pdf).toBe('writer_pdf_Export');
   });
 });
-

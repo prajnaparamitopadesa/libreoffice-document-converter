@@ -12,6 +12,33 @@ Collection of example code for common use cases.
 - [Electron App](#electron-app)
 - [Worker Threads](#worker-threads)
 - [Streaming Large Files](#streaming-large-files)
+- [Bun](#bun)
+
+---
+
+## Bun
+
+### Script Mode: PPT/PPTX to PNG
+
+See `examples/bun-ppt-to-images.ts`.
+
+```bash
+bun examples/bun-ppt-to-images.ts tests/sample_test_1.pptx ./output
+```
+
+### Compiled Mode: Bun Single Executable
+
+See `examples/bun-single-file-ppt-to-images.ts`.
+
+```bash
+bun build --compile examples/bun-single-file-ppt-to-images.ts \
+  --outfile dist/bun-ppt-to-images \
+  --asset-naming='[name].[ext]'
+
+./dist/bun-ppt-to-images tests/sample_test_1.pptx ./output
+```
+
+This example uses the same entrypoint as both the CLI and the subprocess worker, selected via a command-line flag.
 
 ---
 
@@ -909,4 +936,3 @@ createConverter({ wasmPath: './wasm' }).then((c) => {
   app.listen(3000);
 });
 ```
-

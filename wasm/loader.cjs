@@ -17,7 +17,7 @@ const fs = require('fs');
 const path = require('path');
 const { Worker: NodeWorker } = require('worker_threads');
 
-const wasmDir = __dirname;
+let currentWasmDir = __dirname;
 
 // Custom Worker wrapper that resolves paths to absolute paths in wasmDir
 class Worker extends NodeWorker {
@@ -25,7 +25,7 @@ class Worker extends NodeWorker {
     // If filename is relative or just a filename, resolve it to wasmDir
     let resolvedPath = filename;
     if (!path.isAbsolute(filename)) {
-      resolvedPath = path.join(wasmDir, path.basename(filename));
+      resolvedPath = path.join(currentWasmDir, path.basename(filename));
     }
     super(resolvedPath, options);
   }
@@ -38,18 +38,12 @@ global.Worker = Worker;
 let cachedWasmModule = null;
 let cachedWasmBinary = null;
 
-// Change to wasm directory for relative path resolution (if supported)
-// Note: process.chdir() is not available in worker threads
-const origCwd = process.cwd();
-let changedDir = false;
-try {
-  process.chdir(wasmDir);
-  changedDir = true;
-} catch (err) {
-  // In worker threads, chdir is not supported - we'll use absolute paths instead
-  if (err.code !== 'ERR_WORKER_UNSUPPORTED_OPERATION') {
-    throw err;
+function resolveWasmDir(config) {
+  if (!config || !config.wasmPath) {
+    return __dirname;
   }
+
+  return path.resolve(config.wasmPath);
 }
 
 // File sizes for progress calculation (approximate)
@@ -173,6 +167,21 @@ global.XMLHttpRequest = NodeXMLHttpRequest;
  */
 function createModule(config = {}) {
   return new Promise((resolve, reject) => {
+    const wasmDir = resolveWasmDir(config);
+    currentWasmDir = wasmDir;
+    const origCwd = process.cwd();
+    let changedDir = false;
+
+    try {
+      process.chdir(wasmDir);
+      changedDir = true;
+    } catch (err) {
+      if (err.code !== 'ERR_WORKER_UNSUPPORTED_OPERATION') {
+        reject(err);
+        return;
+      }
+    }
+
     // Reset progress tracking
     lastProgress = 0;
     currentProgressCallback = config.onProgress || null;
@@ -274,6 +283,8 @@ function createModule(config = {}) {
  * Returns a Module object that will be populated when ready
  */
 function createModuleSync(config = {}) {
+  const wasmDir = resolveWasmDir(config);
+  currentWasmDir = wasmDir;
   global.Module = {
     wasmBinary: config.wasmBinary,
     locateFile: (filename) => path.join(wasmDir, filename),
@@ -295,6 +306,7 @@ function createModuleSync(config = {}) {
  * @returns {Buffer} The WASM binary
  */
 function preloadWasmBinary() {
+  const wasmDir = currentWasmDir;
   if (cachedWasmBinary) {
     return cachedWasmBinary;
   }
@@ -340,6 +352,7 @@ function clearCache() {
  * Get file sizes for progress estimation
  */
 function getFileSizes() {
+  const wasmDir = currentWasmDir;
   const wasmPath = path.join(wasmDir, 'soffice.wasm');
   const dataPath = path.join(wasmDir, 'soffice.data');
   
@@ -358,5 +371,7 @@ module.exports = {
   isCached,
   clearCache,
   getFileSizes,
-  wasmDir,
+  get wasmDir() {
+    return currentWasmDir;
+  },
 };

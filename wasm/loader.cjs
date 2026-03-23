@@ -18,14 +18,24 @@ const path = require('path');
 const { Worker: NodeWorker } = require('worker_threads');
 
 const wasmDir = __dirname;
+const isBun = !!process.versions?.bun;
+
+function resolveWasmDir(config = {}) {
+  const configuredDir = config.wasmPath || wasmDir;
+  return path.isAbsolute(configuredDir) ? configuredDir : path.resolve(configuredDir);
+}
 
 // Custom Worker wrapper that resolves paths to absolute paths in wasmDir
 class Worker extends NodeWorker {
   constructor(filename, options) {
+    const activeWasmDir = global.__libreofficeWasmDir || wasmDir;
     // If filename is relative or just a filename, resolve it to wasmDir
     let resolvedPath = filename;
     if (!path.isAbsolute(filename)) {
-      resolvedPath = path.join(wasmDir, path.basename(filename));
+      resolvedPath = path.join(activeWasmDir, path.basename(filename));
+    }
+    if (isBun && path.basename(resolvedPath) === 'soffice.cjs') {
+      resolvedPath = path.join(activeWasmDir, 'soffice.worker.cjs');
     }
     super(resolvedPath, options);
   }
@@ -37,20 +47,6 @@ global.Worker = Worker;
 // Cache for compiled WASM module (reuse across instances)
 let cachedWasmModule = null;
 let cachedWasmBinary = null;
-
-// Change to wasm directory for relative path resolution (if supported)
-// Note: process.chdir() is not available in worker threads
-const origCwd = process.cwd();
-let changedDir = false;
-try {
-  process.chdir(wasmDir);
-  changedDir = true;
-} catch (err) {
-  // In worker threads, chdir is not supported - we'll use absolute paths instead
-  if (err.code !== 'ERR_WORKER_UNSUPPORTED_OPERATION') {
-    throw err;
-  }
-}
 
 // File sizes for progress calculation (approximate)
 const FILE_SIZES = {
@@ -173,6 +169,22 @@ global.XMLHttpRequest = NodeXMLHttpRequest;
  */
 function createModule(config = {}) {
   return new Promise((resolve, reject) => {
+    const activeWasmDir = resolveWasmDir(config);
+    global.__libreofficeWasmDir = activeWasmDir;
+
+    // Change to the active wasm directory for relative path resolution (if supported)
+    // Note: process.chdir() is not available in worker threads
+    const origCwd = process.cwd();
+    let changedDir = false;
+    try {
+      process.chdir(activeWasmDir);
+      changedDir = true;
+    } catch (err) {
+      if (err.code !== 'ERR_WORKER_UNSUPPORTED_OPERATION') {
+        throw err;
+      }
+    }
+
     // Reset progress tracking
     lastProgress = 0;
     currentProgressCallback = config.onProgress || null;
@@ -189,7 +201,7 @@ function createModule(config = {}) {
       } else {
         emitProgress('loading_wasm', 2, 'Loading WebAssembly binary...');
         
-        const wasmPath = path.join(wasmDir, 'soffice.wasm');
+        const wasmPath = path.join(activeWasmDir, 'soffice.wasm');
         const wasmData = fs.readFileSync(wasmPath);
         wasmBinary = wasmData.buffer.slice(wasmData.byteOffset, wasmData.byteOffset + wasmData.byteLength);
         
@@ -212,7 +224,7 @@ function createModule(config = {}) {
       
       // Locate files using absolute paths
       locateFile: (filename) => {
-        const resolved = path.join(wasmDir, filename);
+        const resolved = path.join(activeWasmDir, filename);
         if (config.verbose) {
           console.log('[WASM] locateFile:', filename, '->', resolved);
         }
@@ -231,6 +243,7 @@ function createModule(config = {}) {
         if (changedDir) {
           process.chdir(origCwd);
         }
+        delete global.__libreofficeWasmDir;
         
         // Clear progress callback (but keep cache)
         currentProgressCallback = null;
@@ -258,11 +271,12 @@ function createModule(config = {}) {
     try {
       // Load the soffice module
       // This is a patched version that uses global.Module
-      require('./soffice.cjs');
+      require(path.join(activeWasmDir, 'soffice.cjs'));
     } catch (err) {
       if (changedDir) {
         process.chdir(origCwd);
       }
+      delete global.__libreofficeWasmDir;
       currentProgressCallback = null;
       reject(err);
     }
@@ -274,16 +288,17 @@ function createModule(config = {}) {
  * Returns a Module object that will be populated when ready
  */
 function createModuleSync(config = {}) {
+  const activeWasmDir = resolveWasmDir(config);
   global.Module = {
     wasmBinary: config.wasmBinary,
-    locateFile: (filename) => path.join(wasmDir, filename),
+    locateFile: (filename) => path.join(activeWasmDir, filename),
     onRuntimeInitialized: config.onRuntimeInitialized || (() => {}),
     print: config.print || (() => {}),
     printErr: config.printErr || (() => {}),
     ...config,
   };
 
-  require('./soffice.cjs');
+  require(path.join(activeWasmDir, 'soffice.cjs'));
   
   return global.Module;
 }

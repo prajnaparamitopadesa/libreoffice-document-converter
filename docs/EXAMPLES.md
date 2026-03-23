@@ -12,6 +12,7 @@ Collection of example code for common use cases.
 - [Electron App](#electron-app)
 - [Worker Threads](#worker-threads)
 - [Streaming Large Files](#streaming-large-files)
+- [Bun](#bun)
 
 ---
 
@@ -910,3 +911,24 @@ createConverter({ wasmPath: './wasm' }).then((c) => {
 });
 ```
 
+
+---
+
+## Bun
+
+### PPTX to PNG Images
+
+```bash
+bun examples/bun-conversion.ts tests/sample_test_1.pptx
+```
+
+This uses the dedicated Bun entry point and writes slide images into `./converted`.
+
+### Build a Bun Single Executable
+
+```bash
+bun examples/bun-build.ts
+./bun-conversion tests/sample_test_1.pptx
+```
+
+This writes slide images into `./converted-single`.

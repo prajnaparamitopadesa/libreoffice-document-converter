@@ -255,6 +255,7 @@ export class LibreOfficeConverter implements ILibreOfficeConverter {
 
     // Build loader config
     const config = {
+      wasmPath: this.options.wasmPath,
       verbose: this.options.verbose,
       print: this.options.verbose ? console.log : () => { },
       printErr: this.options.verbose ? console.error : () => { },

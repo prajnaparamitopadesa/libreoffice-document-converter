@@ -49,6 +49,22 @@ slides.forEach((img, i) => fs.writeFileSync(`slide-${i}.png`, img.data));
 const highRes = await exportAsImage(pptxBuffer, [0, 1, 2], 'png', { dpi: 300, width: 1920 });
 ```
 
+### Bun Usage
+
+```typescript
+import { createConverter } from '@matbee/libreoffice-converter/bun';
+
+const converter = await createConverter({ wasmPath: './wasm' });
+const result = await converter.convert(pptxBuffer, {
+  inputFormat: 'pptx',
+  outputFormat: 'png',
+  image: { pageIndex: 0, width: 1600 },
+});
+await converter.destroy();
+```
+
+See [`docs/BUN.md`](docs/BUN.md) and the Bun examples for script-mode and single-executable workflows.
+
 ### Server Usage (Recommended)
 
 For servers, use the worker converter to avoid blocking the main thread:
@@ -173,6 +189,7 @@ await converter.initialize();
 
 - **[API Reference](docs/API.md)** - Complete API documentation, types, configuration options
 - **[Examples](docs/EXAMPLES.md)** - Express server, React component, batch conversion, and more
+- **[Bun Support](docs/BUN.md)** - Bun entry point, script mode, and single-executable usage
 
 ## System Requirements
 

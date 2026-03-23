@@ -68,13 +68,16 @@ for (let i = 0; i < args.length; i++) {
   const arg = args[i]!;
   switch (arg) {
     case '--wasm-path':
-      wasmPath = args[++i] || './wasm';
+      if (i + 1 >= args.length) { console.error('Missing value for --wasm-path'); process.exit(1); }
+      wasmPath = args[++i]!;
       break;
     case '--output':
-      outputDir = args[++i] || './output';
+      if (i + 1 >= args.length) { console.error('Missing value for --output'); process.exit(1); }
+      outputDir = args[++i]!;
       break;
     case '--width':
-      width = parseInt(args[++i] || '1920', 10);
+      if (i + 1 >= args.length) { console.error('Missing value for --width'); process.exit(1); }
+      width = parseInt(args[++i]!, 10);
       break;
     case '--help':
       printUsage();

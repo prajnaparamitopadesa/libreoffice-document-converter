@@ -6,6 +6,7 @@ export default defineConfig([
     entry: {
       index: 'src/index.ts',
       server: 'src/server.ts',
+      bun: 'src/bun.ts',
     },
     format: ['cjs', 'esm'],
     dts: true,

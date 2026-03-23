@@ -1,3 +1,7 @@
+# Compiled Bun standalone binary
+bun-conversion
+bun-conversion.exe
+
 # Dependencies
 node_modules/
 .pnp/

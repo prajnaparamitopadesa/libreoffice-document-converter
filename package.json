@@ -29,6 +29,12 @@
       "import": "./dist/types-entry.js",
       "default": "./dist/types-entry.js"
     },
+    "./bun": {
+      "types": "./dist/bun.d.ts",
+      "import": "./dist/bun.js",
+      "require": "./dist/bun.cjs",
+      "default": "./dist/bun.js"
+    },
     "./wasm/loader": {
       "require": "./wasm/loader.cjs",
       "default": "./wasm/loader.cjs"
@@ -42,6 +48,9 @@
       ],
       "server": [
         "./dist/server.d.ts"
+      ],
+      "bun": [
+        "./dist/bun.d.ts"
       ],
       "types": [
         "./dist/types-entry.d.ts"

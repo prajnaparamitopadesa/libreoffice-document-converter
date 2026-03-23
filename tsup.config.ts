@@ -75,6 +75,40 @@ export default defineConfig([
     minify: false,
     outDir: 'dist',
   },
+  // Bun server/runtime build
+  {
+    entry: {
+      bun: 'src/bun.ts',
+    },
+    format: ['esm'],
+    dts: true,
+    sourcemap: true,
+    clean: false,
+    target: 'es2022',
+    platform: 'node',
+    splitting: false,
+    treeshake: true,
+    minify: false,
+    outDir: 'dist',
+    external: ['path', 'url', 'fs', 'fs/promises', 'http', 'worker_threads', 'crypto', 'module', 'os'],
+  },
+  // Bun worker runtime
+  {
+    entry: {
+      'bun.worker': 'src/bun.worker.ts',
+    },
+    format: ['esm'],
+    dts: false,
+    sourcemap: true,
+    clean: false,
+    target: 'es2022',
+    platform: 'node',
+    splitting: false,
+    treeshake: true,
+    minify: false,
+    outDir: 'dist',
+    external: ['path', 'url', 'fs', 'fs/promises', 'http', 'worker_threads', 'crypto', 'module', 'os'],
+  },
   // Browser Web Worker build (classic worker, IIFE format)
   {
     entry: {

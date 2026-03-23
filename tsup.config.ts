@@ -19,6 +19,23 @@ export default defineConfig([
     outDir: 'dist',
     external: ['path', 'url', 'fs', 'fs/promises', 'http', 'worker_threads', 'crypto', 'module'],
   },
+  // Bun entry point (ESM only)
+  {
+    entry: {
+      bun: 'src/bun.ts',
+    },
+    format: ['esm'],
+    dts: true,
+    sourcemap: true,
+    clean: false,
+    target: 'node18',
+    platform: 'node',
+    splitting: false,
+    treeshake: true,
+    minify: false,
+    outDir: 'dist',
+    external: ['path', 'url', 'fs', 'fs/promises', 'http', 'worker_threads', 'crypto', 'module', 'bun'],
+  },
   // Worker thread (separate build, no DTS)
   {
     entry: {

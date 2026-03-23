@@ -55,10 +55,14 @@ export function getBunSelfSpawnCommand({
   }
 
   const inferredEntrypoint = entrypoint ?? argv[1];
-  const isCompiledExecutable = !inferredEntrypoint || inferredEntrypoint === execPath;
+  const isCompiledExecutable = argv.length <= 1 || inferredEntrypoint === execPath;
 
   if (isCompiledExecutable) {
     return [execPath, workerFlag, ...workerArgs];
+  }
+
+  if (!inferredEntrypoint) {
+    throw new Error('entrypoint is required when spawning a Bun script');
   }
 
   return [execPath, inferredEntrypoint, workerFlag, ...workerArgs];

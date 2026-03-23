@@ -85,7 +85,6 @@ async function main() {
   const command = getBunSelfSpawnCommand({
     argv: process.argv,
     execPath: process.execPath,
-    entrypoint: import.meta.path,
     workerArgs: [inputPath, outputDir],
   });
 

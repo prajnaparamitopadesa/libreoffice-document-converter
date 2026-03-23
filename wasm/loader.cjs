@@ -18,6 +18,9 @@ const path = require('path');
 const { Worker: NodeWorker } = require('worker_threads');
 
 let currentWasmDir = __dirname;
+// Emscripten reads a process-wide global.Worker implementation, so a single
+// process should only initialize one active wasm asset directory at a time.
+// Use separate processes if you need to load different wasmPath directories concurrently.
 
 // Custom Worker wrapper that resolves paths to absolute paths in wasmDir
 class Worker extends NodeWorker {
@@ -305,16 +308,19 @@ function createModuleSync(config = {}) {
  * 
  * @returns {Buffer} The WASM binary
  */
-function preloadWasmBinary() {
-  const wasmDir = currentWasmDir;
-  if (cachedWasmBinary) {
+function preloadWasmBinary(providedWasmPath) {
+  const wasmDir = providedWasmPath ? path.resolve(providedWasmPath) : currentWasmDir;
+  if (cachedWasmBinary && wasmDir === currentWasmDir) {
     return cachedWasmBinary;
   }
   
-  const wasmPath = path.join(wasmDir, 'soffice.wasm');
-  const wasmData = fs.readFileSync(wasmPath);
-  cachedWasmBinary = wasmData.buffer.slice(wasmData.byteOffset, wasmData.byteOffset + wasmData.byteLength);
-  return cachedWasmBinary;
+  const wasmBinaryPath = path.join(wasmDir, 'soffice.wasm');
+  const wasmData = fs.readFileSync(wasmBinaryPath);
+  const binary = wasmData.buffer.slice(wasmData.byteOffset, wasmData.byteOffset + wasmData.byteLength);
+  if (wasmDir === currentWasmDir) {
+    cachedWasmBinary = binary;
+  }
+  return binary;
 }
 
 /**
@@ -351,13 +357,13 @@ function clearCache() {
 /**
  * Get file sizes for progress estimation
  */
-function getFileSizes() {
-  const wasmDir = currentWasmDir;
-  const wasmPath = path.join(wasmDir, 'soffice.wasm');
+function getFileSizes(providedWasmPath) {
+  const wasmDir = providedWasmPath ? path.resolve(providedWasmPath) : currentWasmDir;
+  const wasmBinaryPath = path.join(wasmDir, 'soffice.wasm');
   const dataPath = path.join(wasmDir, 'soffice.data');
   
   return {
-    wasm: fs.existsSync(wasmPath) ? fs.statSync(wasmPath).size : 0,
+    wasm: fs.existsSync(wasmBinaryPath) ? fs.statSync(wasmBinaryPath).size : 0,
     data: fs.existsSync(dataPath) ? fs.statSync(dataPath).size : 0,
     get total() { return this.wasm + this.data; },
   };

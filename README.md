@@ -32,7 +32,7 @@ const result = await convertDocument(docx, { outputFormat: 'pdf' });
 fs.writeFileSync('document.pdf', result.data);
 ```
 
-### Bun: PPT/PPTX 转图片
+### Bun: PPT/PPTX to images
 
 ```ts
 import wasmLoader from '@matbee/libreoffice-converter/wasm/loader';
@@ -44,7 +44,7 @@ const slides = await exportAsImage(pptBuffer, [0, 1, 2], 'png', { width: 1600 },
 });
 ```
 
-更完整的 Bun 脚本模式和 `bun build --compile` 打包模式示例见：
+For complete Bun script mode and `bun build --compile` packaged mode examples, see:
 
 - `examples/bun-ppt-to-images.ts`
 - `examples/bun-single-file-ppt-to-images.ts`

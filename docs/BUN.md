@@ -1,88 +1,89 @@
-# Bun 支持说明
+# Bun support
 
-本文档说明本次为 `@matbee/libreoffice-converter` 增加的 Bun 支持、这样做的原因，以及 Bun 脚本模式/单文件可执行文件模式分别应该怎么使用。
+This document explains what was added for Bun support, why the implementation looks the way it does, and how to use the library in both Bun script mode and Bun compiled executable mode.
 
-## 本次改动做了什么
+## What changed
 
-1. **修正运行时判断**
-   - 之前 `convertDocument()` 只要看到 `process.versions.node` 就会走 `SubprocessConverter`。
-   - Bun 也会暴露 `process.versions.node`，所以会被误判成普通 Node.js。
-   - 现在改成了显式区分 `process.versions.bun`，让 Bun 默认走直接转换器，而不是 Node 专用的 `child_process.fork()` 路径。
+1. **Runtime detection is now Bun-aware**
+   - `convertDocument()` previously treated every runtime with `process.versions.node` as regular Node.js.
+   - Bun also exposes `process.versions.node`, so it was incorrectly routed to the Node-only `SubprocessConverter` path.
+   - The runtime detection now checks `process.versions.bun` explicitly, so Bun uses the direct converter path instead of `child_process.fork()`.
 
-2. **让 loader 真正尊重 `wasmPath`**
-   - 之前 `wasm/loader.cjs` 固定使用自己的 `__dirname` 查找 `soffice.wasm`、`soffice.data` 等资源。
-   - 这对 Node.js 本地包目录没问题，但对 Bun `--compile` 场景不够灵活。
-   - 现在 `LibreOfficeConverter` 会把 `wasmPath` 传给 loader，loader 会按调用方指定的目录解析 WASM 资源。
+2. **`wasmPath` is now passed all the way into the loader**
+   - `wasm/loader.cjs` used to resolve `soffice.wasm`, `soffice.data`, and related files strictly from its own `__dirname`.
+   - That works when the package is executed from its installed package directory, but it is too rigid for Bun `--compile`.
+   - `LibreOfficeConverter` now forwards `wasmPath` into the loader, and the loader uses that directory when resolving WASM assets.
 
-3. **导出 Bun 编译场景需要的 WASM 资源路径**
-   - `package.json` 里增加了 `./wasm/soffice.*` 相关 export。
-   - 这样 Bun 应用可以显式 `import ... with { type: "file" }`，把运行所需资源一起带到编译产物旁边。
+3. **WASM asset files are now exported in `package.json`**
+   - The package now exports `./wasm/soffice.*` entrypoints.
+   - This allows Bun applications to import those files with `with { type: "file" }` so Bun can emit them alongside a compiled executable.
 
-4. **提供 Bun 入口调度辅助**
-   - 新增了 `getBunSelfSpawnCommand()`、`isBunSubprocessEntrypoint()` 等辅助函数。
-   - 它们用于“同一个 Bun 入口既能跑主流程，也能在被再次拉起时充当 worker/subprocess”这类场景。
+4. **Bun self-spawn helpers were added**
+   - New helpers such as `getBunSelfSpawnCommand()` and `isBunSubprocessEntrypoint()` make it easier to write a Bun entrypoint that can act as either:
+     - the main CLI process, or
+     - a subprocess/worker mode selected by a command-line flag.
 
-## 为什么这样做
+## Why this design
 
-### 1. Bun 不是“普通 Node.js”
+### Bun is not just “plain Node.js”
 
-虽然 Bun 提供了大量 Node API 兼容层，但这个库原来的 Node 优化路径依赖：
+Bun is highly compatible with Node.js APIs, but this library's optimized Node.js path assumes:
 
 - `child_process.fork()`
-- 外部 worker/subprocess 文件路径
-- 基于包目录的静态资源定位
+- separate worker/subprocess script files on disk
+- static asset lookup relative to the package directory
 
-这些假设在 Bun 中不总是成立，尤其是在 `bun build --compile` 之后更明显。
+Those assumptions are not always safe in Bun, especially once the application is compiled with `bun build --compile`.
 
-### 2. `bun build --compile` 需要可控的资源定位
+### Bun compiled executables need explicit asset control
 
-LibreOffice WASM 运行依赖：
+LibreOffice WASM requires several files at runtime:
 
 - `soffice.wasm`
 - `soffice.data`
 - `soffice.data.js.metadata`
-- pthread worker 相关文件
+- pthread worker helper files
 
-如果 loader 始终只看自己的 `__dirname`，那调用方就很难在 Bun 编译产物里控制这些资源从哪里读取。让 loader 支持 `wasmPath` 是最直接、也最通用的做法。
+If the loader always resolves assets from its own `__dirname`, a Bun compiled executable cannot cleanly redirect that lookup to the files Bun emitted for the executable. Passing `wasmPath` through the loader is the smallest general-purpose fix.
 
-### 3. 单文件可执行文件里，最稳妥的是“同入口自举”
+### Re-launching the same entrypoint is the most reliable compiled-mode pattern
 
-对于 Bun 编译出来的可执行文件，最通用的方式不是假设外部还有一份 JS worker 文件，而是：
+For a Bun compiled executable, the most portable way to support subprocess-style isolation is:
 
-1. 主入口启动；
-2. 判断当前是否带了特殊标记参数；
-3. 如果带了参数，就执行 worker/subprocess 分支；
-4. 如果没带参数，就按正常 CLI 流程跑；
-5. 需要隔离转换时，再拉起“自己”并传入标记参数。
+1. start the main entrypoint normally;
+2. inspect command-line arguments;
+3. if a special flag is present, run the subprocess/worker branch;
+4. otherwise run the normal CLI branch;
+5. when isolation is needed, spawn the same executable again with that special flag.
 
-本仓库里的 `examples/bun-single-file-ppt-to-images.ts` 就演示了这个模式。
+That is exactly what `examples/bun-single-file-ppt-to-images.ts` demonstrates.
 
-## 脚本模式示例
+## Script mode example
 
-见：
+See:
 
-- `/home/runner/work/libreoffice-document-converter/libreoffice-document-converter/examples/bun-ppt-to-images.ts`
+- `examples/bun-ppt-to-images.ts`
 
-运行：
+Run it with:
 
 ```bash
 bun examples/bun-ppt-to-images.ts tests/sample_test_1.pptx ./output
 ```
 
-特点：
+This example:
 
-- 直接在 Bun 环境里调用库；
-- 显式传入 `wasmLoader`；
-- 显式指定 `wasmPath`；
-- 将 PPT/PPTX 页面导出成 PNG。
+- runs directly in Bun;
+- imports `wasmLoader` explicitly;
+- passes `wasmPath` explicitly;
+- converts every slide in a PPT/PPTX file into PNG images.
 
-## 打包模式示例
+## Compiled executable example
 
-见：
+See:
 
-- `/home/runner/work/libreoffice-document-converter/libreoffice-document-converter/examples/bun-single-file-ppt-to-images.ts`
+- `examples/bun-single-file-ppt-to-images.ts`
 
-编译：
+Build it with:
 
 ```bash
 bun build --compile examples/bun-single-file-ppt-to-images.ts \
@@ -90,42 +91,44 @@ bun build --compile examples/bun-single-file-ppt-to-images.ts \
   --asset-naming='[name].[ext]'
 ```
 
-运行：
+Run it with:
 
 ```bash
 ./dist/bun-ppt-to-images tests/sample_test_1.pptx ./output
 ```
 
-这个示例有两个关键点：
+This example depends on two key ideas:
 
-1. **通过 `import ... with { type: "file" }` 把 WASM 资源带进 Bun 编译流程**
-2. **通过命令行 flag 把同一个入口切换成主进程 / subprocess 两种角色**
+1. **Use `import ... with { type: "file" }`** so Bun emits the required WASM assets next to the executable.
+2. **Use a subprocess flag** so the same entrypoint can switch between main-process mode and subprocess mode.
 
-## 技术原理总结
+## Technical summary
 
-### 运行时选择
+### Runtime selection
 
-- **Node.js**：`convertDocument()` 仍然优先走 `SubprocessConverter`
-- **Bun**：`convertDocument()` 改为默认走直接转换器
+- **Node.js**: `convertDocument()` still prefers `SubprocessConverter`
+- **Bun**: `convertDocument()` now prefers the direct converter path
 
-这样可以避免 Bun 误入 Node 专用的 fork 路径。
+That prevents Bun from accidentally entering the Node-only fork-based implementation.
 
-### 资源解析
+### Asset resolution
 
-- `LibreOfficeConverter` 现在会把 `wasmPath` 传给 `wasmLoader.createModule()`
-- `wasm/loader.cjs` 会按这个 `wasmPath` 去解析 `soffice.*` 资源
+- `LibreOfficeConverter` now passes `wasmPath` into `wasmLoader.createModule()`
+- `wasm/loader.cjs` now resolves `soffice.*` assets relative to that `wasmPath`
 
-因此：
+That means:
 
-- 在普通脚本模式里，可以直接指向包内 `wasm/`
-- 在 Bun 编译模式里，可以指向 Bun 输出到可执行文件旁边的资源目录
+- in script mode, you can point at the package's normal `wasm/` directory;
+- in Bun compiled mode, you can point at the asset directory Bun emitted for the executable.
 
-### 同入口 subprocess/worker 调度
+### Single-entrypoint subprocess dispatch
 
-新增的辅助函数让 Bun 入口可以判断：
+The new Bun helpers let a Bun entrypoint decide:
 
-- 当前是不是 Bun 运行时
-- 当前是不是被当作 subprocess 再次启动
-- 当前应该如何拼接“再次拉起自己”的命令
+- whether it is running on Bun;
+- whether it was launched in subprocess mode;
+- how to construct the correct “spawn myself again” command for either:
+  - `bun run script.ts`, or
+  - a compiled Bun executable.
 
-这就是“通过命令行参数等方式在入口点判断是否为 subprocess/worker”的实现方式。
+This is the implementation behind the “detect subprocess/worker mode at the entrypoint via CLI arguments” approach described in the issue.

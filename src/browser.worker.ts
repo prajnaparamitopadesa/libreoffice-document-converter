@@ -116,6 +116,44 @@ function emitProgress(progress: WasmLoadProgress) {
   self.postMessage({ type: 'progress', id: currentInitRequestId, progress });
 }
 
+type BunWorkerGlobal = typeof globalThis & WorkerGlobalScope & {
+  Module?: Record<string, unknown>;
+  process?: { versions?: { bun?: string } };
+  require?: (specifier: string) => unknown;
+};
+
+function isBunWorkerRuntime(): boolean {
+  return Boolean((self as BunWorkerGlobal).process?.versions?.bun);
+}
+
+function getBunBootstrapUrl(sofficeJs: string): string {
+  return new URL('./soffice.bun.bootstrap.js', sofficeJs).href;
+}
+
+function loadEntrypointScript(sofficeJs: string): void {
+  if (typeof importScripts === 'function') {
+    importScripts(sofficeJs);
+    return;
+  }
+
+  if (!isBunWorkerRuntime()) {
+    throw new Error('importScripts is not available in this worker runtime');
+  }
+
+  const globalScope = self as BunWorkerGlobal;
+  const requireFn = globalScope.require;
+  if (typeof requireFn !== 'function') {
+    throw new Error('Bun worker does not expose require(); cannot load the LibreOffice runtime');
+  }
+
+  const fs = requireFn('fs') as { readFileSync: (path: URL | string, encoding: string) => string };
+  const bootstrapUrl = getBunBootstrapUrl(sofficeJs);
+  const bootstrapSource = fs.readFileSync(new URL(bootstrapUrl), 'utf8');
+
+  const evaluator = new Function(`${bootstrapSource}\n//# sourceURL=${bootstrapUrl}`);
+  evaluator.call(self);
+}
+
 /**
  * Install fetch interceptor to track WASM file downloads
  * Must be called BEFORE importScripts() loads Emscripten
@@ -572,17 +610,19 @@ async function handleInit(msg: WorkerMessage) {
   emitPhaseProgress('download-wasm', 'Preparing to download WebAssembly...');
 
   try {
+    const bunBootstrapUrl = isBunWorkerRuntime() ? getBunBootstrapUrl(sofficeJs) : sofficeJs;
+
     // Configure global Module for Emscripten
     console.log('[Worker] Setting up Module with explicit paths:', { sofficeJs, sofficeWasm, sofficeData, sofficeWorkerJs });
     self.Module = {
       // Tell pthread workers where to load the main module from
-      mainScriptUrlOrBlob: sofficeJs,
+      mainScriptUrlOrBlob: bunBootstrapUrl,
       locateFile: (path: string, _scriptDir?: string) => {
         let result: string;
         if (path.endsWith('.wasm')) result = sofficeWasm;
         else if (path.endsWith('.data')) result = sofficeData;
         // Handle both .worker.js and .worker.cjs requests
-        else if (path.includes('.worker.')) result = sofficeWorkerJs;
+        else if (path.includes('.worker.')) result = isBunWorkerRuntime() ? bunBootstrapUrl : sofficeWorkerJs;
         else {
           // Fallback: derive from sofficeJs path for any other files
           const baseUrl = sofficeJs.substring(0, sofficeJs.lastIndexOf('/') + 1);
@@ -596,9 +636,9 @@ async function handleInit(msg: WorkerMessage) {
       printErr: console.error,
     };
 
-    // Load the soffice.js script using importScripts
-    // This triggers the .wasm download (tracked by XHR interceptor)
-    importScripts(sofficeJs);
+    // Load the soffice.js script.
+    // Browsers use importScripts(); Bun workers currently need a bootstrap loader.
+    loadEntrypointScript(sofficeJs);
 
     // Wait for runtime to be ready
     // .data file download and WebAssembly compilation happen here

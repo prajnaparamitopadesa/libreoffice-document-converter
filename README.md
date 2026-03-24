@@ -1,12 +1,12 @@
 # LibreOffice WASM Document Converter
 
-Convert documents between formats (DOCX, PDF, XLSX, PPTX, etc.) in Node.js or browsers using LibreOffice compiled to WebAssembly. No native dependencies required.
+Convert documents between formats (DOCX, PDF, XLSX, PPTX, etc.) in Node.js, Bun, or browsers using LibreOffice compiled to WebAssembly. No native dependencies required.
 
 ## Features
 
 - **Pure WebAssembly** - No native LibreOffice installation required
 - **Wide Format Support** - Convert between 15+ document formats
-- **Cross-Platform** - Works in Node.js and browsers
+- **Cross-Platform** - Works in Node.js, Bun, and browsers
 - **Fast** - ~35ms per conversion after initialization
 
 ## Installation
@@ -100,6 +100,14 @@ a.click();
 Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Embedder-Policy: require-corp
 ```
+
+## Bun Usage
+
+```ts
+import { createBunConverter } from '@matbee/libreoffice-converter/bun';
+```
+
+For Bun script mode and `bun build --compile` usage, see [docs/BUN.md](./docs/BUN.md).
 
 ## Font Support
 

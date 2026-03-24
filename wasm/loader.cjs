@@ -1,12 +1,33 @@
 /**
- * Node.js WASM Loader for LibreOffice
- * 
+ * WASM Loader for LibreOffice – Node.js and Bun
+ *
  * This CommonJS wrapper provides the necessary polyfills and setup
- * for loading the Emscripten-generated LibreOffice WASM module in Node.js.
- * 
+ * for loading the Emscripten-generated LibreOffice WASM module in Node.js
+ * and in Bun (via Bun's native Web Worker API).
+ *
+ * Bun support notes
+ * -----------------
+ * Bun identifies itself through `process.versions.bun`.  Emscripten's
+ * generated code uses `worker_threads` for pthreads on Node.js, but Bun's
+ * `worker_threads` implementation is not fully compatible with Emscripten's
+ * pthread model (shared WASM module/memory transfer).  Instead we route Bun
+ * through Emscripten's *browser* Web Worker code path which Bun natively
+ * supports via its `Worker` global.
+ *
+ * Key changes when running in Bun:
+ *  1. `soffice.cjs` has been patched: `&&!process.versions.bun` added to
+ *     `ENVIRONMENT_IS_NODE` so Bun is treated as a browser environment.
+ *  2. `global.window = globalThis` is set so `ENVIRONMENT_IS_WEB = true`.
+ *  3. Bun's native `Worker` global is used (not overridden with NodeWorker).
+ *  4. `Module.mainScriptUrlOrBlob` points to `soffice-bun-worker.cjs` so
+ *     pthread worker threads load with the correct environment setup.
+ *  5. The synchronous `fs.readFile` polyfill is not applied for Bun because
+ *     Emscripten's run-dependency mechanism handles async file reads fine,
+ *     and blocking the event loop would be harmful in Bun.
+ *
  * Load Time Optimizations:
  * - Pre-loads WASM binary before module init
- * - Uses synchronous file I/O (required for Emscripten)
+ * - Uses synchronous file I/O (required for Emscripten on Node.js)
  * - Supports pre-compiled WASM modules for faster startup
  * - Can cache compiled modules for reuse
  */
@@ -15,40 +36,55 @@
 
 const fs = require('fs');
 const path = require('path');
-const { Worker: NodeWorker } = require('worker_threads');
 
 const wasmDir = __dirname;
 
-// Custom Worker wrapper that resolves paths to absolute paths in wasmDir
-class Worker extends NodeWorker {
-  constructor(filename, options) {
-    // If filename is relative or just a filename, resolve it to wasmDir
-    let resolvedPath = filename;
-    if (!path.isAbsolute(filename)) {
-      resolvedPath = path.join(wasmDir, path.basename(filename));
-    }
-    super(resolvedPath, options);
-  }
-}
+// Detect Bun runtime – present as of Bun 1.0+
+const isBun = typeof process !== 'undefined' && !!process.versions.bun;
 
-// Make Worker globally available
-global.Worker = Worker;
+if (isBun) {
+  // In Bun we use the browser Web Worker path in soffice.cjs.
+  // Setting global.window makes ENVIRONMENT_IS_WEB=true so Emscripten
+  // does not try to use Node.js worker_threads for pthreads.
+  global.window = globalThis;
+} else {
+  // Node.js: provide a Worker wrapper that resolves relative paths into
+  // the WASM directory (soffice.cjs spawns workers using its own filename).
+  const { Worker: NodeWorker } = require('worker_threads');
+
+  class Worker extends NodeWorker {
+    constructor(filename, options) {
+      let resolvedPath = filename;
+      if (!path.isAbsolute(filename)) {
+        resolvedPath = path.join(wasmDir, path.basename(filename));
+      }
+      super(resolvedPath, options);
+    }
+  }
+
+  // Make Worker globally available so soffice.cjs picks it up before it
+  // overwrites global.Worker with the raw worker_threads.Worker.
+  global.Worker = Worker;
+}
 
 // Cache for compiled WASM module (reuse across instances)
 let cachedWasmModule = null;
 let cachedWasmBinary = null;
 
-// Change to wasm directory for relative path resolution (if supported)
-// Note: process.chdir() is not available in worker threads
+// Change to wasm directory for relative path resolution (if supported).
+// Not needed in Bun because we always use absolute paths via locateFile.
+// Not available in Node.js worker threads.
 const origCwd = process.cwd();
 let changedDir = false;
-try {
-  process.chdir(wasmDir);
-  changedDir = true;
-} catch (err) {
-  // In worker threads, chdir is not supported - we'll use absolute paths instead
-  if (err.code !== 'ERR_WORKER_UNSUPPORTED_OPERATION') {
-    throw err;
+if (!isBun) {
+  try {
+    process.chdir(wasmDir);
+    changedDir = true;
+  } catch (err) {
+    // In worker threads, chdir is not supported – use absolute paths instead.
+    if (err.code !== 'ERR_WORKER_UNSUPPORTED_OPERATION') {
+      throw err;
+    }
   }
 }
 
@@ -71,31 +107,36 @@ function emitProgress(phase, percent, message) {
   }
 }
 
-// Make fs.readFile synchronous (required because WASM init blocks event loop)
+// Make fs.readFile synchronous for Node.js (required because WASM init blocks
+// the event loop on that platform).  Bun does not need this: its Emscripten
+// code path (browser/Web Worker) uses Emscripten's async run-dependency
+// mechanism which works fine with Bun's native async fs.readFile.
 const origReadFile = fs.readFile.bind(fs);
-fs.readFile = function(filePath, optionsOrCallback, maybeCallback) {
-  const callback = typeof optionsOrCallback === 'function' ? optionsOrCallback : maybeCallback;
-  const options = typeof optionsOrCallback === 'function' ? undefined : optionsOrCallback;
-  
-  const filename = path.basename(filePath);
-  
-  // Emit progress for large files
-  if (filename === 'soffice.data') {
-    emitProgress('loading_data', 20, 'Loading LibreOffice data files...');
-  }
-  
-  try {
-    const data = fs.readFileSync(filePath, options);
+if (!isBun) {
+  fs.readFile = function(filePath, optionsOrCallback, maybeCallback) {
+    const callback = typeof optionsOrCallback === 'function' ? optionsOrCallback : maybeCallback;
+    const options = typeof optionsOrCallback === 'function' ? undefined : optionsOrCallback;
     
+    const filename = path.basename(filePath);
+    
+    // Emit progress for large files
     if (filename === 'soffice.data') {
-      emitProgress('loading_data', 35, `Loaded ${(data.length / 1024 / 1024).toFixed(0)}MB filesystem image`);
+      emitProgress('loading_data', 20, 'Loading LibreOffice data files...');
     }
     
-    callback(null, data);
-  } catch (err) {
-    callback(err);
-  }
-};
+    try {
+      const data = fs.readFileSync(filePath, options);
+      
+      if (filename === 'soffice.data') {
+        emitProgress('loading_data', 35, `Loaded ${(data.length / 1024 / 1024).toFixed(0)}MB filesystem image`);
+      }
+      
+      callback(null, data);
+    } catch (err) {
+      callback(err);
+    }
+  };
+}
 
 // XMLHttpRequest polyfill for Node.js with progress
 class NodeXMLHttpRequest {
@@ -218,6 +259,12 @@ function createModule(config = {}) {
         }
         return resolved;
       },
+
+      // Bun: tell Emscripten which script to load in pthread worker threads.
+      // In browser mode (used for Bun) _scriptName is undefined, so we must
+      // provide mainScriptUrlOrBlob explicitly.  We use the Bun worker wrapper
+      // that polyfills WorkerGlobalScope when necessary.
+      mainScriptUrlOrBlob: isBun ? path.join(wasmDir, 'soffice-bun-worker.cjs') : undefined,
       
       // Runtime initialized callback
       onRuntimeInitialized: () => {

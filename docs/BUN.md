@@ -55,6 +55,7 @@ Output images are written to:
 
 ## Technical notes
 
-- The Bun example intentionally points at `./src/browser.worker.ts` and `./wasm` from the repository root so the same code path works in both script mode and compiled-executable mode.
+- The Bun example intentionally points at `./src/browser.worker.bun.js` and `./wasm` from the repository root so the same code path works in both script mode and compiled-executable mode.
 - No Node subprocesses are used.
 - The Bun path uses the worker/browser conversion implementation, which keeps the runtime aligned with Bun's Web Worker model.
+- `browser.worker.bun.js` is a classic-worker wrapper so Bun keeps `require()` available while the inner LibreOffice worker logic stays in `browser.worker.ts`.

@@ -119,7 +119,8 @@ function emitProgress(progress: WasmLoadProgress) {
 type BunWorkerGlobal = typeof globalThis & {
   Module?: Record<string, unknown>;
   process?: { versions?: { bun?: string } };
-  require?: (specifier: string) => unknown;
+  require?: unknown;
+  __libreofficeBunBootstrapUrl?: string;
 };
 
 type BunFsModule = {
@@ -146,8 +147,9 @@ function loadEntrypointScript(sofficeJs: string): void {
   }
 
   const globalScope = self as BunWorkerGlobal;
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-  const requireFn = globalScope['require'];
+  // Bun exposes `require` as a free variable in workers, but not always on globalThis.
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment,@typescript-eslint/no-unsafe-member-access
+  const requireFn = typeof require === 'function' ? require : globalScope['require'];
   if (typeof requireFn !== 'function') {
     throw new Error('Bun worker does not expose require(); cannot load the LibreOffice runtime');
   }
@@ -156,11 +158,20 @@ function loadEntrypointScript(sofficeJs: string): void {
   const fs = bunRequire('fs') as BunFsModule;
   const bootstrapUrl = getBunBootstrapUrl(sofficeJs);
   const bootstrapSource = fs.readFileSync(new URL(bootstrapUrl), 'utf8');
+  const requireHolder = globalScope as { require?: unknown };
+  const previousGlobalRequire = requireHolder.require;
+  globalScope.__libreofficeBunBootstrapUrl = bootstrapUrl;
+  requireHolder.require = bunRequire;
 
   // eslint-disable-next-line @typescript-eslint/no-implied-eval
   const evaluator = new Function(`${bootstrapSource}\n//# sourceURL=${bootstrapUrl}`);
   // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-  evaluator.call(self);
+  try {
+    evaluator.call(self);
+  } finally {
+    delete globalScope.__libreofficeBunBootstrapUrl;
+    requireHolder.require = previousGlobalRequire;
+  }
 }
 
 /**

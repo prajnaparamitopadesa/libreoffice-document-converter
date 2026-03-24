@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
 
 import { WorkerBrowserConverter } from './browser.js';
 import type {
@@ -33,20 +33,12 @@ function toFileHref(pathOrUrl: string | URL): string {
   return pathToFileURL(resolve(pathOrUrl)).href;
 }
 
-function currentModuleDir(): string {
-  return fileURLToPath(new URL('.', import.meta.url));
-}
-
 function defaultWasmBaseUrl(): string {
   return toFileHref(new URL('../wasm/', import.meta.url));
 }
 
 function defaultBrowserWorkerUrl(): string {
-  const moduleUrl = new URL(import.meta.url);
-  if (moduleUrl.pathname.endsWith('/src/bun.ts')) {
-    return new URL('./browser.worker.ts', import.meta.url).href;
-  }
-  return new URL('./browser.worker.global.js', import.meta.url).href;
+  return new URL('./browser.worker.bun.js', import.meta.url).href;
 }
 
 export function createBunWasmPaths(wasmPath: string | URL = defaultWasmBaseUrl()): {
@@ -125,4 +117,3 @@ export async function exportAsImage(
 
 export { WorkerBrowserConverter as BunConverter } from './browser.js';
 export type { ConversionOptions, ConversionResult, ImageOptions } from './types.js';
-export { currentModuleDir };

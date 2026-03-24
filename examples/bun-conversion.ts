@@ -14,7 +14,8 @@ function getCliInputPath(): string {
 }
 
 function getOutputDirectory(): string {
-  return process.argv.length > 2 ? 'converted' : 'converted-single';
+  const isCompiledBinary = typeof Bun !== 'undefined' && Bun.main.startsWith('/$bunfs/root/');
+  return isCompiledBinary ? 'converted-single' : 'converted';
 }
 
 async function main(): Promise<void> {
@@ -26,7 +27,7 @@ async function main(): Promise<void> {
   const inputFormat = (extname(inputPath).slice(1).toLowerCase() || 'pptx') as InputFormat;
   const converter = await createBunConverter({
     wasmPath: resolve(repoRoot, 'wasm'),
-    browserWorkerJs: pathToFileURL(resolve(repoRoot, 'src/browser.worker.ts')).href,
+    browserWorkerJs: pathToFileURL(resolve(repoRoot, 'src/browser.worker.bun.js')).href,
     verbose: false,
   });
 

@@ -94,4 +94,25 @@ export default defineConfig([
       'process.versions': 'undefined',
     },
   },
+  // Bun classic-worker wrapper (preserves require in Bun workers)
+  {
+    entry: {
+      'browser.worker.bun': 'src/browser.worker.bun.js',
+    },
+    format: ['cjs'],
+    dts: false,
+    sourcemap: true,
+    target: 'node18',
+    platform: 'node',
+    splitting: false,
+    treeshake: true,
+    minify: false,
+    outDir: 'dist',
+    clean: false,
+    outExtension() {
+      return {
+        js: '.js',
+      };
+    },
+  },
 ]);

@@ -28,4 +28,12 @@ describe('Bun helpers', () => {
     expect(options.sofficeWorkerJs).toBe('file:///tmp/libreoffice-wasm/soffice.worker.js');
     expect(options.verbose).toBe(true);
   });
+
+  it('uses the Bun classic-worker wrapper by default', () => {
+    const options = createBunWorkerOptions({
+      wasmPath: '/tmp/libreoffice-wasm',
+    });
+
+    expect(options.browserWorkerJs).toMatch(/browser\.worker\.bun\.js$/);
+  });
 });

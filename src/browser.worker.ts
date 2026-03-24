@@ -116,14 +116,19 @@ function emitProgress(progress: WasmLoadProgress) {
   self.postMessage({ type: 'progress', id: currentInitRequestId, progress });
 }
 
-type BunWorkerGlobal = typeof globalThis & WorkerGlobalScope & {
+type BunWorkerGlobal = typeof globalThis & {
   Module?: Record<string, unknown>;
   process?: { versions?: { bun?: string } };
   require?: (specifier: string) => unknown;
 };
 
+type BunFsModule = {
+  readFileSync: (path: URL | string, encoding: string) => string;
+};
+
 function isBunWorkerRuntime(): boolean {
-  return Boolean((self as BunWorkerGlobal).process?.versions?.bun);
+  const bunProcess = (self as unknown as { process?: { versions?: { bun?: string } } }).process;
+  return Boolean(bunProcess?.versions?.bun);
 }
 
 function getBunBootstrapUrl(sofficeJs: string): string {
@@ -141,16 +146,20 @@ function loadEntrypointScript(sofficeJs: string): void {
   }
 
   const globalScope = self as BunWorkerGlobal;
-  const requireFn = globalScope.require;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+  const requireFn = globalScope['require'];
   if (typeof requireFn !== 'function') {
     throw new Error('Bun worker does not expose require(); cannot load the LibreOffice runtime');
   }
 
-  const fs = requireFn('fs') as { readFileSync: (path: URL | string, encoding: string) => string };
+  const bunRequire = requireFn as (specifier: string) => unknown;
+  const fs = bunRequire('fs') as BunFsModule;
   const bootstrapUrl = getBunBootstrapUrl(sofficeJs);
   const bootstrapSource = fs.readFileSync(new URL(bootstrapUrl), 'utf8');
 
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval
   const evaluator = new Function(`${bootstrapSource}\n//# sourceURL=${bootstrapUrl}`);
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call
   evaluator.call(self);
 }
 

@@ -3,32 +3,47 @@
  * Bun Worker Entry Point for soffice.cjs pthreads
  *
  * This wrapper ensures that Emscripten correctly detects the Bun Web Worker
- * context. Some Bun versions may not expose `WorkerGlobalScope` globally even
- * though `self` and `postMessage` are available, so we polyfill it here if
- * necessary before loading the main WASM module.
+ * context as a pthread worker.
  *
- * When soffice.cjs runs inside this worker it will see:
- *   ENVIRONMENT_IS_NODE   = false  (Bun excluded by the soffice.cjs patch)
- *   ENVIRONMENT_IS_WORKER = true   (WorkerGlobalScope is defined)
- *   ENVIRONMENT_IS_PTHREAD = true  (self.name starts with "em-pthread")
+ * Bun 1.3.x differences from the Web Worker spec:
+ *  1. `WorkerGlobalScope` is not defined in workers → ENVIRONMENT_IS_WORKER = false
+ *  2. `self.name` is undefined even when a name is passed to `new Worker(url, {name})`
+ *     → ENVIRONMENT_IS_PTHREAD = false
+ *  3. `self.location` is not defined → crash in scriptDirectory setup
  *
- * This is the correct browser-worker path that works with Bun's native
- * Web Worker implementation.
+ * All three are polyfilled here before requiring soffice.cjs.
  */
 
-// Ensure Emscripten detects this as a Web Worker context.
-// In standard Bun Web Workers `WorkerGlobalScope` is already defined, but
-// older Bun releases or edge-cases may omit it.
+// 1. Polyfill WorkerGlobalScope so ENVIRONMENT_IS_WORKER = true
 if (typeof WorkerGlobalScope === 'undefined') {
-  // Provide a minimal WorkerGlobalScope so the ENVIRONMENT_IS_WORKER check
-  // in soffice.cjs evaluates to true.
+  // `globalThis.constructor` is the global's own class (e.g. Window in browsers).
+  // In Bun workers it is typically undefined, so we fall back to a named class
+  // which is easier to identify in stack traces.
+  const WorkerGlobalScopeClass = globalThis.constructor || class WorkerGlobalScope {};
   Object.defineProperty(globalThis, 'WorkerGlobalScope', {
-    value: globalThis.constructor || class WorkerGlobalScope {},
+    value: WorkerGlobalScopeClass,
     writable: true,
     configurable: true,
   });
 }
 
-// Load the patched main WASM module.  The Bun-patched soffice.cjs will now
-// detect ENVIRONMENT_IS_WORKER=true and run in pthread mode.
+// 2. Force pthread mode: self.name must start with "em-pthread" for
+//    ENVIRONMENT_IS_PTHREAD = ENVIRONMENT_IS_WORKER && self.name?.startsWith("em-pthread")
+//    to evaluate to true.  Bun 1.3.x does not propagate the Worker constructor's
+//    `name` option to self.name, so we set it manually.
+if (!globalThis.name || !globalThis.name.startsWith('em-pthread')) {
+  globalThis.name = 'em-pthread-bun';
+}
+
+// 3. Polyfill self.location (used by Emscripten to set up scriptDirectory).
+//    In pthread mode the scriptDirectory value is not used for file loading
+//    (the WASM module arrives via postMessage), but the access still runs
+//    unconditionally and would crash without this polyfill.
+if (!globalThis.location) {
+  globalThis.location = { href: 'file://', pathname: '/', hostname: '' };
+}
+
+// Load the patched main WASM module.  With the polyfills above, soffice.cjs
+// will detect ENVIRONMENT_IS_PTHREAD=true and skip the data-file loading,
+// instead waiting for the {cmd:"load"} message from the main thread.
 require('./soffice.cjs');

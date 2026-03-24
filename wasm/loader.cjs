@@ -47,6 +47,22 @@ if (isBun) {
   // Setting global.window makes ENVIRONMENT_IS_WEB=true so Emscripten
   // does not try to use Node.js worker_threads for pthreads.
   global.window = globalThis;
+
+  // Emscripten's data-file loader computes PACKAGE_PATH from
+  // window.location.pathname.  We only need it as a fallback (Module.locateFile
+  // takes precedence), but the access still runs unconditionally and would
+  // crash with "undefined is not an object".  Provide a minimal mock.
+  if (!global.window.location) {
+    global.window.location = { pathname: '/', href: 'file://', hostname: '' };
+  }
+
+  // Emscripten's browser environment check also guards against
+  // "not compiled for this environment" with a check on `document`.
+  // Provide a minimal stub so optional chaining on `document.currentScript`
+  // doesn't throw on older code patterns.
+  if (typeof global.document === 'undefined') {
+    global.document = { currentScript: null };
+  }
 } else {
   // Node.js: provide a Worker wrapper that resolves relative paths into
   // the WASM directory (soffice.cjs spawns workers using its own filename).

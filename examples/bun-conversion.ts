@@ -162,7 +162,21 @@ async function main(): Promise<void> {
     `\n✅ Done in ${duration}s — ${exported.length} image(s) saved to ${outputDir}/`,
   );
 
-  await converter.destroy();
+  // Destroy the converter and force-exit.  In Bun 1.3.x the pthread Web Worker
+  // pool does not fully terminate via the normal destroy() path (workers block
+  // waiting for the main Emscripten proxy queue).  We use process.exit() after
+  // a short grace period to avoid hanging indefinitely.
+  // TODO: remove the timeout once Bun properly handles pthread Worker termination
+  // (track: https://github.com/oven-sh/bun/issues)
+  try {
+    await Promise.race([
+      converter.destroy(),
+      new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+    ]);
+  } catch {
+    // Best-effort cleanup
+  }
+  process.exit(0);
 }
 
 main().catch((err: unknown) => {

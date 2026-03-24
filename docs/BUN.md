@@ -78,21 +78,41 @@ This prevents soffice.cjs from entering the Node.js branch (and the
 
 #### 3. `wasm/soffice-bun-worker.cjs`
 
-A tiny wrapper that polyfills `WorkerGlobalScope` on older Bun versions (some
-releases do not expose it globally even though the worker API is available),
-then loads `soffice.cjs`.
+A wrapper that provides three polyfills required by Bun 1.3.x before loading `soffice.cjs`:
 
-When a pthread worker starts:
+| Polyfill | Reason |
+|---|---|
+| `globalThis.WorkerGlobalScope = class WorkerGlobalScope {}` | Bun 1.3.x does not expose `WorkerGlobalScope` in workers → `ENVIRONMENT_IS_WORKER = false` without this |
+| `globalThis.name = "em-pthread-bun"` | Bun 1.3.x does not propagate the `name` option from `new Worker(url, {name})` to `self.name` → `ENVIRONMENT_IS_PTHREAD = false` without this |
+| `globalThis.location = { href: "file://", pathname: "/" }` | Bun 1.3.x workers don't have `self.location` (used by Emscripten to compute `scriptDirectory`) → crash without this |
+
+When a pthread worker starts with these polyfills:
 
 ```
-ENVIRONMENT_IS_NODE   = false  (Bun excluded by patch)
-ENVIRONMENT_IS_WORKER = true   (WorkerGlobalScope is defined)
-ENVIRONMENT_IS_PTHREAD = true  (self.name starts with "em-pthread")
+ENVIRONMENT_IS_NODE   = false  (Bun excluded by soffice.cjs patch)
+ENVIRONMENT_IS_WORKER = true   (WorkerGlobalScope polyfilled)
+ENVIRONMENT_IS_PTHREAD = true  (self.name = "em-pthread-bun")
 ```
 
-This is exactly the browser-pthread code path.  Workers receive the
+This is the browser-pthread code path.  Workers receive the
 pre-compiled `WebAssembly.Module` and shared `WebAssembly.Memory` from the
 main thread via `postMessage` — no file I/O needed in workers.
+
+**Note on Bun's `postMessage` with WebAssembly objects:** Bun 1.3.x supports
+passing `WebAssembly.Module` and `WebAssembly.Memory` objects through
+`postMessage` as long as no explicit transfer list is provided (i.e., just
+`worker.postMessage({ wasmModule, wasmMemory })`, not
+`worker.postMessage({...}, [wasmMemory.buffer])`).  Emscripten's
+`loadWasmModuleToWorker` already uses this form, so it works without patching.
+
+#### 4. `loader.cjs` main thread additions
+
+`loader.cjs` also provides two additional mocks for the main thread's browser environment:
+
+| Mock | Reason |
+|---|---|
+| `global.window.location = { pathname: '/', ... }` | Emscripten's `loadPackage` reads `window.location.pathname` unconditionally to compute `PACKAGE_PATH` (even though `Module.locateFile` takes precedence) |
+| `global.document = { currentScript: null }` | Prevents crashes in Emscripten's browser environment initialization |
 
 ---
 

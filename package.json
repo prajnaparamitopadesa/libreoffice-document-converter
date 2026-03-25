@@ -58,6 +58,7 @@
     "wasm/soffice.wasm",
     "wasm/soffice.worker.cjs",
     "wasm/soffice.worker.js",
+    "wasm/soffice-bun-worker.cjs",
     "README.md"
   ],
   "scripts": {
